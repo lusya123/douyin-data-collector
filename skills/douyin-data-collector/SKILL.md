@@ -1,56 +1,70 @@
 ---
 name: douyin-data-collector
-description: 采集抖音账号粉丝数据并自动填写到飞书表格。使用场景：(1) 用户说"采集抖音数据"或"抖音粉丝数据"，(2) 用户说"采集 YYYY-MM-DD 的抖音数据"，(3) 用户说"采集最近 N 天的抖音数据"。支持数据去重、智能重试和飞书消息通知。
+description: 采集抖音账号粉丝数据并自动填写到飞书表格。使用场景：(1) 用户说"采集抖音数据"或"抖音粉丝数据"，(2) 用户说"采集 YYYY-MM-DD 的抖音数据"，(3) 用户说"采集最近 N 天的抖音数据"。支持数据去重、智能重试和飞书消息通知。首次使用会自动引导配置。
 ---
 
 # 抖音数据采集
 
 采集抖音账号粉丝数据并写入飞书多维表格。
 
-## 首次配置
+## 执行流程
 
-1. 安装依赖：
+**每次执行前必须先检查配置：**
+
+### 步骤 1：检查配置
+
+```bash
+python3 {SKILL_DIR}/scripts/check_config.py
+```
+
+- 如果输出 `CONFIG_OK`：配置完整，继续步骤 2
+- 如果输出 `MISSING_CONFIG`：配置缺失，执行步骤 1.1
+
+### 步骤 1.1：引导用户配置（仅当配置缺失时）
+
+当检测到缺失配置时，使用 AskUserQuestion 工具逐项询问用户：
+
+**缺失项说明：**
+
+| 配置项 | 说明 | 获取方式 |
+|-------|------|---------|
+| TIKHUB_API_KEY | TikHub API 密钥 | 在 https://tikhub.io 注册获取 |
+| FEISHU_APP_ID | 飞书应用 ID | 飞书开放平台创建应用 |
+| FEISHU_APP_SECRET | 飞书应用密钥 | 飞书应用的 App Secret |
+| DOUYIN_KOL_ID | 抖音 KOL ID | 抖音星图平台获取 |
+| FEISHU_APP_TOKEN | 飞书多维表格 ID | 表格 URL 中的 app_token |
+| FEISHU_TABLE_ID | 表格子表 ID | 表格内子表的 ID |
+| FEISHU_CHAT_ID | 消息群组 ID | 接收通知的群组 ID |
+
+**配置方式：** 用户提供值后，执行：
+
+```bash
+python3 {SKILL_DIR}/scripts/setup.py "配置项" "用户提供的值"
+```
+
+例如：
+```bash
+python3 {SKILL_DIR}/scripts/setup.py "tikhub.api_key" "用户的API密钥"
+python3 {SKILL_DIR}/scripts/setup.py "douyin.kol_id" "7339427184844472347"
+```
+
+配置完所有缺失项后，重新执行步骤 1 验证。
+
+### 步骤 2：安装依赖（首次）
+
 ```bash
 pip3 install -r {SKILL_DIR}/requirements.txt
 ```
 
-2. 配置敏感信息（二选一）：
-
-**方式一：环境变量（推荐）**
-```bash
-cp {SKILL_DIR}/.env.example {SKILL_DIR}/.env
-# 编辑 .env 填入密钥
-```
-
-**方式二：配置文件**
-```bash
-cp {SKILL_DIR}/config.example.json {SKILL_DIR}/config.json
-# 编辑 config.json 填入配置
-```
-
-环境变量优先级高于配置文件。
-
-## 必需的环境变量/配置
-
-| 环境变量 | 配置字段 | 说明 |
-|---------|---------|------|
-| TIKHUB_API_KEY | tikhub.api_key | TikHub API 密钥 |
-| FEISHU_APP_ID | feishu.app_id | 飞书应用 ID |
-| FEISHU_APP_SECRET | feishu.app_secret | 飞书应用密钥 |
-| DOUYIN_KOL_ID | douyin.kol_id | 抖音 KOL ID |
-| FEISHU_APP_TOKEN | feishu.app_token | 飞书多维表格 ID |
-| FEISHU_TABLE_ID | feishu.table_id | 表格子表 ID |
-| FEISHU_CHAT_ID | feishu.chat_id | 消息群组 ID |
-
-## 执行采集
+### 步骤 3：执行采集
 
 ```bash
 {SKILL_DIR}/scripts/run.sh
 ```
 
-## 采集结果
+### 步骤 4：汇报结果
 
-脚本输出包含：
+向用户汇报：
 - 统计日期
 - 粉丝总数
 - 粉丝净新增
