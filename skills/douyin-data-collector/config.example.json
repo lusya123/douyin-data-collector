@@ -1,0 +1,19 @@
+{
+  "douyin": {
+    "kol_id": "YOUR_DOUYIN_KOL_ID"
+  },
+  "tikhub": {
+    "api_url": "https://api.tikhub.dev/api/v1/douyin/xingtu/kol_daily_fans_v1",
+    "api_key": "YOUR_TIKHUB_API_KEY"
+  },
+  "feishu": {
+    "app_id": "YOUR_FEISHU_APP_ID",
+    "app_secret": "YOUR_FEISHU_APP_SECRET",
+    "app_token": "YOUR_FEISHU_APP_TOKEN",
+    "table_id": "YOUR_FEISHU_TABLE_ID",
+    "chat_id": "YOUR_FEISHU_CHAT_ID"
+  },
+  "retry": {
+    "max_retry_days": 3
+  }
+}

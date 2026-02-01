@@ -1,0 +1,5 @@
+{
+  "name": "douyin-data-collector",
+  "version": "1.0.0",
+  "description": "采集抖音账号粉丝数据并自动填写到飞书表格，支持数据去重和重试机制"
+}
