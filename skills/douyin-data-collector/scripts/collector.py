@@ -214,16 +214,16 @@ class DouyinDataCollector:
             target_delta = next((d for d in delta_list if d['date'] == target_date), None)
 
             if target_daily and target_delta:
-                print(f\"✅ 在返回的数据中找到目标日期 {target_date}\")
+                print(f"✅ 在返回的数据中找到目标日期 {target_date}")
                 return {
                     'date': target_daily['date'],
                     'fans_count': target_daily['fans_cnt'],
                     'fans_delta': target_delta['fans_cnt']
                 }
             else:
-                print(f\"⚠️  返回的数据中没有目标日期 {target_date}\")
+                print(f"⚠️  返回的数据中没有目标日期 {target_date}")
                 if daily_list:
-                    print(f\"   可用日期: {[d['date'] for d in daily_list]}\")
+                    print(f"   可用日期: {[d['date'] for d in daily_list]}")
                 return None
 
         # 如果没有指定目标日期，返回最新的数据
