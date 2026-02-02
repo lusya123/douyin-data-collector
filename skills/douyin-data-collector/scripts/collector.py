@@ -128,8 +128,18 @@ class DouyinDataCollector:
             return None
 
     def fetch_douyin_data(self, start_date, end_date):
-        """获取抖音粉丝数据"""
-        url = self.config['tikhub']['api_url']
+        """获取抖音粉丝数据（支持备选 API）"""
+        # 获取 API 地址列表（支持单个 URL 或 URL 列表）
+        api_urls = self.config['tikhub'].get('api_urls', [])
+        if not api_urls:
+            # 兼容旧配置：如果没有 api_urls，使用 api_url
+            api_url = self.config['tikhub'].get('api_url')
+            if api_url:
+                api_urls = [api_url]
+            else:
+                print("❌ 配置错误：缺少 API 地址")
+                return None
+
         params = {
             'kolId': self.config['douyin']['kol_id'],
             'startDate': start_date,
@@ -140,26 +150,47 @@ class DouyinDataCollector:
             'accept': 'application/json'
         }
 
-        try:
-            print(f"🔍 正在获取 {start_date} 的数据...")
-            response = requests.get(url, params=params, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        # 尝试所有 API 地址
+        for idx, url in enumerate(api_urls):
+            try:
+                api_name = f"API-{idx + 1}" if len(api_urls) > 1 else "API"
+                print(f"🔍 正在使用 {api_name} 获取 {start_date} 的数据...")
 
-            if data.get('data') and \
-               data['data'].get('daily') and len(data['data']['daily']) > 0 and \
-               data['data'].get('delta') and len(data['data']['delta']) > 0:
-                return data
-            else:
-                print(f"⚠️  {start_date} 数据不存在或为空")
-                return None
+                response = requests.get(url, params=params, headers=headers, timeout=10)
+                response.raise_for_status()
+                data = response.json()
 
-        except requests.exceptions.RequestException as e:
-            print(f"❌ API 请求失败: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ 数据获取异常: {e}")
-            return None
+                if data.get('data') and \
+                   data['data'].get('daily') and len(data['data']['daily']) > 0 and \
+                   data['data'].get('delta') and len(data['data']['delta']) > 0:
+                    print(f"✅ {api_name} 请求成功")
+                    return data
+                else:
+                    print(f"⚠️  {api_name} 返回数据为空")
+                    # 如果数据为空，尝试下一个 API
+                    if idx < len(api_urls) - 1:
+                        print(f"🔄 尝试备选 API...")
+                        continue
+                    return None
+
+            except requests.exceptions.Timeout:
+                print(f"⚠️  {api_name} 请求超时")
+                if idx < len(api_urls) - 1:
+                    print(f"🔄 尝试备选 API...")
+                    continue
+            except requests.exceptions.RequestException as e:
+                print(f"⚠️  {api_name} 请求失败: {e}")
+                if idx < len(api_urls) - 1:
+                    print(f"🔄 尝试备选 API...")
+                    continue
+            except Exception as e:
+                print(f"⚠️  {api_name} 异常: {e}")
+                if idx < len(api_urls) - 1:
+                    print(f"🔄 尝试备选 API...")
+                    continue
+
+        print(f"❌ 所有 API 地址均请求失败")
+        return None
 
     def parse_data(self, raw_data):
         """解析抖音 API 返回的数据"""

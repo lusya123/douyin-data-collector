@@ -3,7 +3,10 @@
     "kol_id": "YOUR_DOUYIN_KOL_ID"
   },
   "tikhub": {
-    "api_url": "https://api.tikhub.dev/api/v1/douyin/xingtu/kol_daily_fans_v1",
+    "api_urls": [
+      "https://api.tikhub.io/api/v1/douyin/xingtu/kol_daily_fans_v1",
+      "https://api.tikhub.dev/api/v1/douyin/xingtu/kol_daily_fans_v1"
+    ],
     "api_key": "YOUR_TIKHUB_API_KEY"
   },
   "feishu": {
