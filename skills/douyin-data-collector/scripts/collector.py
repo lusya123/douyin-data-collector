@@ -192,13 +192,41 @@ class DouyinDataCollector:
         print(f"❌ 所有 API 地址均请求失败")
         return None
 
-    def parse_data(self, raw_data):
-        """解析抖音 API 返回的数据"""
+    def parse_data(self, raw_data, target_date=None):
+        """
+        解析抖音 API 返回的数据
+
+        Args:
+            raw_data: API 返回的原始数据
+            target_date: 目标日期（可选），如果指定则筛选该日期的数据
+
+        Returns:
+            dict: 包含日期、粉丝数、净新增的字典，如果找不到目标日期则返回 None
+        """
         daily_list = sorted(raw_data['data']['daily'],
                            key=lambda x: x['date'], reverse=True)
         delta_list = sorted(raw_data['data']['delta'],
                            key=lambda x: x['date'], reverse=True)
 
+        # 如果指定了目标日期，尝试筛选该日期的数据
+        if target_date:
+            target_daily = next((d for d in daily_list if d['date'] == target_date), None)
+            target_delta = next((d for d in delta_list if d['date'] == target_date), None)
+
+            if target_daily and target_delta:
+                print(f\"✅ 在返回的数据中找到目标日期 {target_date}\")
+                return {
+                    'date': target_daily['date'],
+                    'fans_count': target_daily['fans_cnt'],
+                    'fans_delta': target_delta['fans_cnt']
+                }
+            else:
+                print(f\"⚠️  返回的数据中没有目标日期 {target_date}\")
+                if daily_list:
+                    print(f\"   可用日期: {[d['date'] for d in daily_list]}\")
+                return None
+
+        # 如果没有指定目标日期，返回最新的数据
         latest_daily = daily_list[0]
         latest_delta = delta_list[0]
 
@@ -333,33 +361,53 @@ class DouyinDataCollector:
             print(f"⚠️  发送通知异常: {e}")
 
     def collect_with_retry(self, target_date=None):
-        """采集数据（带重试机制）"""
+        """
+        采集数据（带智能重试机制）
+
+        策略：
+        1. 首次请求：[target_date-1, target_date] 尝试获取 target_date-1 的数据
+        2. 如果失败，扩大查询范围：[target_date-2, target_date]
+        3. 继续扩大：[target_date-3, target_date]
+        4. 从返回的多天数据中筛选出目标日期
+
+        这种策略可以处理 API 的开区间/闭区间不确定性
+        """
         if not self.get_feishu_tenant_token():
             return {
                 'success': False,
                 'message': '获取飞书 token 失败'
             }
 
+        # 确定目标日期（默认为昨天）
         if target_date is None:
             yesterday = datetime.now() - timedelta(days=1)
             target_date = yesterday.strftime('%Y-%m-%d')
 
+        print(f"🎯 目标采集日期: {target_date}")
+
         max_retry = self.config['retry']['max_retry_days']
+        target_date_obj = datetime.strptime(target_date, '%Y-%m-%d')
 
+        # 尝试不同的日期组合
         for retry in range(max_retry + 1):
-            query_date = datetime.strptime(target_date, '%Y-%m-%d') - timedelta(days=retry)
-            start_date = (query_date - timedelta(days=1)).strftime('%Y-%m-%d')
-            end_date = query_date.strftime('%Y-%m-%d')
+            # 策略：固定 end_date 为目标日期，逐步扩大 start_date 的范围
+            # retry=0: [target-1, target]
+            # retry=1: [target-2, target]
+            # retry=2: [target-3, target]
+            start_date = (target_date_obj - timedelta(days=retry + 1)).strftime('%Y-%m-%d')
+            end_date = target_date_obj.strftime('%Y-%m-%d')
 
+            print(f"\n📅 第 {retry + 1} 次尝试: 查询范围 [{start_date}, {end_date}]")
             raw_data = self.fetch_douyin_data(start_date, end_date)
 
             if raw_data:
-                parsed_data = self.parse_data(raw_data)
-                actual_date = parsed_data['date']
-                expected_date = (query_date - timedelta(days=1)).strftime('%Y-%m-%d')
+                # 尝试从返回的数据中筛选目标日期的前一天
+                # 因为 API 返回的是 start_date 的数据
+                expected_date = (target_date_obj - timedelta(days=1)).strftime('%Y-%m-%d')
+                parsed_data = self.parse_data(raw_data, expected_date)
 
-                if actual_date == expected_date:
-                    print(f"✅ 获取到 {actual_date} 的数据")
+                if parsed_data:
+                    # 成功获取到目标日期的数据
                     write_success = self.write_to_feishu(parsed_data)
 
                     if write_success:
@@ -367,7 +415,7 @@ class DouyinDataCollector:
                         return {
                             'success': True,
                             'data': parsed_data,
-                            'message': f'成功采集并写入 {actual_date} 的数据'
+                            'message': f'成功采集并写入 {parsed_data["date"]} 的数据'
                         }
                     else:
                         return {
@@ -375,14 +423,17 @@ class DouyinDataCollector:
                             'message': '数据写入失败'
                         }
                 else:
-                    print(f"⚠️  日期不匹配，期望 {expected_date}，实际 {actual_date}")
-
-            if retry < max_retry:
-                print(f"🔄 第 {retry + 1} 次重试...")
+                    # 数据中没有目标日期，尝试扩大范围
+                    if retry < max_retry:
+                        print(f"🔄 扩大查询范围重试...")
+            else:
+                # API 请求失败
+                if retry < max_retry:
+                    print(f"🔄 第 {retry + 1} 次请求失败，扩大范围重试...")
 
         return {
             'success': False,
-            'message': f'在 {max_retry + 1} 次尝试后仍未获取到数据'
+            'message': f'在 {max_retry + 1} 次尝试后仍未获取到 {target_date} 的数据'
         }
 
 
