@@ -364,11 +364,18 @@ class DouyinDataCollector:
         """
         采集数据（带智能重试机制）
 
-        策略：
-        1. 首次请求：[target_date-1, target_date] 尝试获取 target_date-1 的数据
-        2. 如果失败，扩大查询范围：[target_date-2, target_date]
-        3. 继续扩大：[target_date-3, target_date]
-        4. 从返回的多天数据中筛选出目标日期
+        策略：多维度组合尝试
+        1. 调整 start_date（左侧区间）：往前推 1-3 天
+        2. 调整 end_date（右侧区间）：尝试 target、target+1、target-1
+        3. 从返回的多天数据中筛选出目标日期
+
+        组合示例（target=2026-02-02）：
+        - [2026-02-01, 2026-02-02]  标准组合
+        - [2026-02-01, 2026-02-03]  右侧+1
+        - [2026-02-01, 2026-02-01]  右侧-1
+        - [2026-01-31, 2026-02-02]  左侧-1
+        - [2026-01-31, 2026-02-03]  左侧-1, 右侧+1
+        ...
 
         这种策略可以处理 API 的开区间/闭区间不确定性
         """
@@ -387,27 +394,46 @@ class DouyinDataCollector:
 
         max_retry = self.config['retry']['max_retry_days']
         target_date_obj = datetime.strptime(target_date, '%Y-%m-%d')
+        expected_date = (target_date_obj - timedelta(days=1)).strftime('%Y-%m-%d')
 
-        # 尝试不同的日期组合
-        for retry in range(max_retry + 1):
-            # 策略：固定 end_date 为目标日期，逐步扩大 start_date 的范围
-            # retry=0: [target-1, target]
-            # retry=1: [target-2, target]
-            # retry=2: [target-3, target]
-            start_date = (target_date_obj - timedelta(days=retry + 1)).strftime('%Y-%m-%d')
-            end_date = target_date_obj.strftime('%Y-%m-%d')
+        # 定义日期组合策略
+        # 格式：(start_offset, end_offset, description)
+        date_combinations = [
+            # 第一轮：标准组合
+            (1, 0, "标准组合"),
+            # 第二轮：调整右侧区间
+            (1, 1, "右侧+1天"),
+            (1, -1, "右侧-1天"),
+            # 第三轮：扩大左侧，保持右侧标准
+            (2, 0, "左侧-1天"),
+            # 第四轮：扩大左侧，调整右侧
+            (2, 1, "左侧-1天,右侧+1天"),
+            (2, -1, "左侧-1天,右侧-1天"),
+            # 第五轮：继续扩大左侧
+            (3, 0, "左侧-2天"),
+            (3, 1, "左侧-2天,右侧+1天"),
+            (3, -1, "左侧-2天,右侧-1天"),
+        ]
 
-            print(f"\n📅 第 {retry + 1} 次尝试: 查询范围 [{start_date}, {end_date}]")
+        # 根据 max_retry 限制尝试次数
+        max_attempts = min(len(date_combinations), max_retry + 1)
+
+        for attempt in range(max_attempts):
+            start_offset, end_offset, desc = date_combinations[attempt]
+
+            start_date = (target_date_obj - timedelta(days=start_offset)).strftime('%Y-%m-%d')
+            end_date = (target_date_obj + timedelta(days=end_offset)).strftime('%Y-%m-%d')
+
+            print(f"\n📅 第 {attempt + 1} 次尝试 ({desc}): 查询范围 [{start_date}, {end_date}]")
             raw_data = self.fetch_douyin_data(start_date, end_date)
 
             if raw_data:
-                # 尝试从返回的数据中筛选目标日期的前一天
-                # 因为 API 返回的是 start_date 的数据
-                expected_date = (target_date_obj - timedelta(days=1)).strftime('%Y-%m-%d')
+                # 尝试从返回的数据中筛选目标日期
                 parsed_data = self.parse_data(raw_data, expected_date)
 
                 if parsed_data:
                     # 成功获取到目标日期的数据
+                    print(f"✅ 成功获取到 {expected_date} 的数据（使用{desc}）")
                     write_success = self.write_to_feishu(parsed_data)
 
                     if write_success:
@@ -423,17 +449,17 @@ class DouyinDataCollector:
                             'message': '数据写入失败'
                         }
                 else:
-                    # 数据中没有目标日期，尝试扩大范围
-                    if retry < max_retry:
-                        print(f"🔄 扩大查询范围重试...")
+                    # 数据中没有目标日期
+                    if attempt < max_attempts - 1:
+                        print(f"⚠️  未找到目标日期，尝试其他组合...")
             else:
                 # API 请求失败
-                if retry < max_retry:
-                    print(f"🔄 第 {retry + 1} 次请求失败，扩大范围重试...")
+                if attempt < max_attempts - 1:
+                    print(f"⚠️  请求失败，尝试其他组合...")
 
         return {
             'success': False,
-            'message': f'在 {max_retry + 1} 次尝试后仍未获取到 {target_date} 的数据'
+            'message': f'尝试了 {max_attempts} 种日期组合后仍未获取到 {expected_date} 的数据'
         }
 
 
